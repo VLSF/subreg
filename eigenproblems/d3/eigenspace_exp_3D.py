@@ -216,7 +216,7 @@ if __name__ == "__main__":
     A_indices = global_data["A_indices"]
 
     D = 3
-    N_run_per_chunk = 1000 #args["N_epoch"] * N_train // args["N_batch"] // args["train_chunks"]
+    N_run_per_chunk = args["N_epoch"] * N_train // args["N_batch"] // args["train_chunks"]
     N_drop = args["N_drop"] * N_train // args["N_batch"]
 
     key = random.PRNGKey(args["key"])
