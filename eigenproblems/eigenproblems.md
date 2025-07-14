@@ -17,9 +17,9 @@ We consider two ways to solve this problem:
 # Loss functions
 
 Suppose target tall matrix is $V\in\mathbb{R}^{N\times k}$ and predicted matrix is $W\in\mathbb{R}^{N\times k}$. Three natural losses are:
-1. $\mathbb{Z}_2$-adjusted $L_2$ loss $\frac{1}{K}\sum_{i=1}^{K}\min_{\pm}\left\|V_{\star i} \pm W_{\star i}\right\|_{2}^2$
+1. $Z_2$-adjusted $L_2$ loss $\frac{1}{K}\sum_{i=1}^{K}\min_{\pm}\left\|V_{\star i} \pm W_{\star i}\right\|_{2}^2$
 2. Classical distance between subspaces $k - \left\|Q_{W}^{\top} V\right\|_F^2$ where $Q_WR = W$ is a QR decomposition of matrix $W$.
-3. OLS stochastic loss $\mathbb{E}_{z}\left[\min_{u} \left\|Vz - W u\right\|_2^2\right]$ where $z$ is random variable with diagonal covariance matrix $\mathbb{E}\left[z z^{\top}\right] = I$.
+3. OLS stochastic loss $E_{z}\left[\min_{u} \left\|Vz - W u\right\|_2^2\right]$ where $z$ is random variable with diagonal covariance matrix $E_z\left[z z^{\top}\right] = I$.
 
 # Results
 
