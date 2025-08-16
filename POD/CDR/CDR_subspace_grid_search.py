@@ -158,7 +158,7 @@ def get_sample(carry, ind):
     P, u0, diffusion, convection, reaction, source, t, dt = carry
     M = P[ind].T @ get_operator(convection[ind], diffusion[ind, ::2], reaction[ind], dt) @ P[ind]
     carry_ = [M, P[ind].T @ u0[ind], P[ind].T @ source[ind]*dt]
-    
+
     carry_, U = scan(integrate, carry_, t[1:])
     U = jnp.concatenate([u0[ind].reshape(1, -1), U @ P[ind].T], axis=0)
     return carry, U
@@ -178,13 +178,13 @@ def compute_metrics(model, features, coordinates, data):
     Q = vmap(lambda x: jnp.linalg.qr(x.T)[0].T)(predictions.reshape(predictions.shape[0], predictions.shape[1], -1))
     M = dot_general(Q, basis, (((2,), (2,)), ((0,), (0,))))
     cosines = vmap(jnp.linalg.svdvals)(M)
-    
+
     sol = jnp.moveaxis(dot_general(Q, M, (((1,), (1,)), ((0,), (0,)))), 1, 2)
     Errors = jnp.linalg.norm(sol - basis, axis=2)
 
     rel_errors = get_errors(jnp.transpose(Q, (0, 2, 1)), data)
     return cosines, Errors, rel_errors
-    
+
 def get_argparser():
     parser = argparse.ArgumentParser()
     args = {
@@ -193,7 +193,7 @@ def get_argparser():
             "type": str,
             "choices": ["l2", "stochastic_normal", "subspace"],
             "help": "experiment type: defines loss, architecture and how subspace is predicted"
-        },       
+        },
         "-learning_rate": {
             "default": 1e-3,
             "type": float,
@@ -273,86 +273,86 @@ if __name__ == "__main__":
 
     data = jnp.load("CDR_dataset.npz")
     subspace_data = jnp.load("CDR_local_POD.npz")
-    
+
     data = {key: jnp.array(data[key]) for key in data.keys()}
     subspace_data = {key: jnp.array(subspace_data[key]) for key in subspace_data.keys()}
 
     features = jnp.stack([data["convection"], data["diffusion"][:, 1::2], data["reaction"], data["source"], data["solutions"][:, 0]], 1)
     basis = jnp.transpose(subspace_data["basis"][:, :, :args["N_basis"]], (0, 2, 1))
-    
+
     coordinates = jnp.expand_dims(jnp.array(data["x"]), axis=0)
     norm_factor = jnp.max(jnp.abs(features), axis=[0, 2], keepdims=True)
     norm_factor = norm_factor + (norm_factor == 0)
     features = features / norm_factor
 
-    # for N_drop_ in [100, 200]:
-    #     for N_modes_ in [16, 14, 10]:
-    #         for N_layers_ in [5, 4, 3]:
-    #             for learning_rate_ in [1e-3, 1e-4]:
-    #                 args["N_drop"] = N_drop_
-    #                 args["N_modes"] = N_modes_
-    #                 args["N_layers"] = N_layers_
-    #                 args["learning_rate"] = learning_rate_
-    exp_hash = "".join([str(args[a]) for a in sorted(args)])
-    exp_hash = hashlib.sha256(str.encode(exp_hash)).hexdigest()
+    for N_drop_ in [100, 200]:
+        for N_modes_ in [16, 14, 10]:
+            for N_layers_ in [5, 4, 3]:
+                for learning_rate_ in [1e-3, 1e-4]:
+                    args["N_drop"] = N_drop_
+                    args["N_modes"] = N_modes_
+                    args["N_layers"] = N_layers_
+                    args["learning_rate"] = learning_rate_
+                    exp_hash = "".join([str(args[a]) for a in sorted(args)])
+                    exp_hash = hashlib.sha256(str.encode(exp_hash)).hexdigest()
 
-    D = features.ndim - 2
-    N_run = args["N_epoch"] * args["N_train"] // args["N_batch"]
-    N_drop = args["N_drop"] * args["N_train"] // args["N_batch"]
+                    D = features.ndim - 2
+                    N_run = args["N_epoch"] * args["N_train"] // args["N_batch"]
+                    N_drop = args["N_drop"] * args["N_train"] // args["N_batch"]
 
-    key = random.PRNGKey(args["key"])
-    keys = random.split(key, 3)
-    
-    if args["experiment_type"] == "l2":
-        N_features = [coordinates.shape[0] + features.shape[1], args["N_processor"], args["N_basis"]]
-        model = FFNO_normalised(args["N_layers"], N_features, args["N_modes"], D, keys[0])
-    else:
-        N_features = [coordinates.shape[0] + features.shape[1], args["N_processor"], args["N_subspace"]]
-        model = FFNO_normalised(args["N_layers"], N_features, args["N_modes"], D, keys[0])
-        
-    model_size = sum(tree_map(lambda x: jnp.size(x) if x.dtype == jnp.float32 else 2*jnp.size(x), tree_flatten(model)[0], is_leaf=eqx.is_array))
-    learning_rate = optax.exponential_decay(args["learning_rate"], N_drop, args["gamma"])
-    optim = optax.lion(learning_rate=learning_rate)
-    opt_state = optim.init(eqx.filter(model, eqx.is_array))
-    
-    n = random.choice(keys[1], args["N_train"], shape = (N_run, args["N_batch"]))
-    if args["experiment_type"] == "stochastic_normal":
-        carry = [model, features, basis, coordinates, keys[1], opt_state]
-    else:
-        carry = [model, features, basis, coordinates, opt_state]
+                    key = random.PRNGKey(args["key"])
+                    keys = random.split(key, 3)
 
-    if args["experiment_type"] == "l2":
-        make_step_scan_ = lambda a, b: l2_make_step_scan(a, b, optim)
-    elif args["experiment_type"] == "stochastic_normal":
-        make_step_scan_ = lambda a, b: stochastic_normal_make_step_scan(a, b, optim)
-    elif args["experiment_type"] == "subspace":
-        make_step_scan_ = lambda a, b: subspace_make_step_scan(a, b, optim)
-        
-    start = time.time()
-    carry, history = scan(make_step_scan_, carry, n)
-    stop = time.time()
-    training_time = stop - start
-    model = carry[0]
-    opt_state = carry[-1]
+                    if args["experiment_type"] == "l2":
+                        N_features = [coordinates.shape[0] + features.shape[1], args["N_processor"], args["N_basis"]]
+                        model = FFNO_normalised(args["N_layers"], N_features, args["N_modes"], D, keys[0])
+                    else:
+                        N_features = [coordinates.shape[0] + features.shape[1], args["N_processor"], args["N_subspace"]]
+                        model = FFNO_normalised(args["N_layers"], N_features, args["N_modes"], D, keys[0])
 
-    eqx.tree_serialise_leaves(f'grid_search_CDR/{args["experiment_type"]}/model_{exp_hash}.eqx', model)
-    eqx.tree_serialise_leaves(f'grid_search_CDR/{args["experiment_type"]}/opt_state_{exp_hash}.eqx', opt_state)
+                    model_size = sum(tree_map(lambda x: jnp.size(x) if x.dtype == jnp.float32 else 2*jnp.size(x), tree_flatten(model)[0], is_leaf=eqx.is_array))
+                    learning_rate = optax.exponential_decay(args["learning_rate"], N_drop, args["gamma"])
+                    optim = optax.lion(learning_rate=learning_rate)
+                    opt_state = optim.init(eqx.filter(model, eqx.is_array))
 
-    cosines, errors, rel_errors = compute_metrics(model, features, coordinates, data)
-    
-    train_cosines = jnp.mean(cosines[:args["N_train"]])
-    test_cosines = jnp.mean(cosines[args["N_train"]:])
-    
-    train_errors = jnp.mean(errors[:args["N_train"]])
-    test_errors = jnp.mean(errors[args["N_train"]:])
-    
-    train_rel_errors = jnp.mean(rel_errors[:args["N_train"]])
-    test_rel_errors = jnp.mean(rel_errors[args["N_train"]:])
+                    n = random.choice(keys[1], args["N_train"], shape = (N_run, args["N_batch"]))
+                    if args["experiment_type"] == "stochastic_normal":
+                        carry = [model, features, basis, coordinates, keys[1], opt_state]
+                    else:
+                        carry = [model, features, basis, coordinates, opt_state]
 
-    data = "\n" + ",".join([str(args[key]) for key in args.keys()])
-    data += f",{exp_hash},{history[-1]},{model_size},{training_time},{train_cosines},{test_cosines},{train_errors},{test_errors},{train_rel_errors},{test_rel_errors}"
+                    if args["experiment_type"] == "l2":
+                        make_step_scan_ = lambda a, b: l2_make_step_scan(a, b, optim)
+                    elif args["experiment_type"] == "stochastic_normal":
+                        make_step_scan_ = lambda a, b: stochastic_normal_make_step_scan(a, b, optim)
+                    elif args["experiment_type"] == "subspace":
+                        make_step_scan_ = lambda a, b: subspace_make_step_scan(a, b, optim)
 
-    with open(f'grid_search_CDR/{args["experiment_type"]}/results.csv', "a") as f:
-        f.write(data)
-    
-    jnp.savez(f'grid_search_CDR/{args["experiment_type"]}/metrics_{exp_hash}.npz', cosines=cosines, errors=errors, eigvecs_errors=rel_errors, history=history)
+                    start = time.time()
+                    carry, history = scan(make_step_scan_, carry, n)
+                    stop = time.time()
+                    training_time = stop - start
+                    model = carry[0]
+                    opt_state = carry[-1]
+
+                    eqx.tree_serialise_leaves(f'grid_search_CDR/{args["experiment_type"]}/model_{exp_hash}.eqx', model)
+                    eqx.tree_serialise_leaves(f'grid_search_CDR/{args["experiment_type"]}/opt_state_{exp_hash}.eqx', opt_state)
+
+                    cosines, errors, rel_errors = compute_metrics(model, features, coordinates, data)
+
+                    train_cosines = jnp.mean(cosines[:args["N_train"]])
+                    test_cosines = jnp.mean(cosines[args["N_train"]:])
+
+                    train_errors = jnp.mean(errors[:args["N_train"]])
+                    test_errors = jnp.mean(errors[args["N_train"]:])
+
+                    train_rel_errors = jnp.mean(rel_errors[:args["N_train"]])
+                    test_rel_errors = jnp.mean(rel_errors[args["N_train"]:])
+
+                    data = "\n" + ",".join([str(args[key]) for key in args.keys()])
+                    data += f",{exp_hash},{history[-1]},{model_size},{training_time},{train_cosines},{test_cosines},{train_errors},{test_errors},{train_rel_errors},{test_rel_errors}"
+
+                    with open(f'grid_search_CDR/{args["experiment_type"]}/results.csv', "a") as f:
+                        f.write(data)
+
+                    jnp.savez(f'grid_search_CDR/{args["experiment_type"]}/metrics_{exp_hash}.npz', cosines=cosines, errors=errors, eigvecs_errors=rel_errors, history=history)
