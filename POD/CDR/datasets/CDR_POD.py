@@ -5,6 +5,10 @@ def get_global_POD_basis(solutions):
     _, sigmas, Vt = jnp.linalg.svd(solutions.reshape(-1, solutions.shape[-1]))
     return Vt.T, sigmas
 
+def get_global_POD_basis_np(solutions):
+    _, sigmas, Vt = np.linalg.svd(solutions.reshape(-1, solutions.shape[-1]))
+    return Vt.T, sigmas
+
 def get_local_POD_basis(solutions):
     _, (V, sigmas) = scan(lambda carry, i: (carry, get_global_POD_basis(carry[i])), solutions, jnp.arange(solutions.shape[0]))
     return V, sigmas
@@ -19,7 +23,7 @@ if __name__ == "__main__":
     }
     jnp.savez("CDR_local_POD.npz", **local_POD_data)
 
-    V, sigmas = get_global_POD_basis(data["solutions"][:N_train])
+    V, sigmas = get_global_POD_basis_np(np.array(data["solutions"][:N_train]))
     global_POD_data = {
         "basis": jnp.expand_dims(V, 0),
         "sigmas": sigmas
