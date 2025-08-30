@@ -45,15 +45,15 @@ def mixed_EMO_dataset_I(N_samples=1000):
     L = get_laplacian(N_r, R)
     key = random.PRNGKey(33)
     r = np.linspace(0, R, N_r)
-    
-    keys = random.split(key, 3)
+
+    keys = random.split(key, 4)
     mask = -np.array([(-1)**i for i in range(p_ord1-1)] + [1,]).reshape(1, -1)
     phi1 = np.array(random.uniform(keys[0], (N_samples, p_ord1)) * apmlitude1).astype(np.float64)*mask
     phi2 = np.array(random.uniform(keys[1], (N_samples, p_ord2)) * amplitude2).astype(np.float64)
     phi2[:, -1] = 1 + np.abs(phi2[:, -1])
     r_e = np.array(random.uniform(keys[2], (N_samples,)) * (r_e_max - r_e_min) + r_e_min).astype(np.float64)
     D = np.array(random.uniform(keys[3], (N_samples,)) * (D_max - D_min) + D_min).astype(np.float64)
-    
+
     potentials = []
     for i in range(N_samples):
         V12 = compute_mixed_EMO(r, r_e[i], D[i], phi1[i], phi2[i])
@@ -93,15 +93,15 @@ def mixed_EMO_dataset_II(N_samples=1000):
     L = get_laplacian(N_r, R)
     key = random.PRNGKey(33)
     r = np.linspace(0, R, N_r)
-    
-    keys = random.split(key, 3)
+
+    keys = random.split(key, 4)
     mask = -np.array([(-1)**i for i in range(p_ord1-1)] + [1,]).reshape(1, -1)
     phi1 = np.array(random.uniform(keys[0], (N_samples, p_ord1)) * apmlitude1).astype(np.float64)*mask
     phi2 = np.array(random.uniform(keys[1], (N_samples, p_ord2)) * amplitude2).astype(np.float64)
     phi2[:, -1] = 1 + np.abs(phi2[:, -1])
     r_e = np.array(random.uniform(keys[2], (N_samples,)) * (r_e_max - r_e_min) + r_e_min).astype(np.float64)
     D = np.array(random.uniform(keys[3], (N_samples,)) * (D_max - D_min) + D_min).astype(np.float64)
-    
+
     potentials = []
     for i in range(N_samples):
         V12 = compute_mixed_EMO(r, r_e[i], D[i], phi1[i], phi2[i])
@@ -141,15 +141,15 @@ def mixed_EMO_dataset_III(N_samples=1000):
     L = get_laplacian(N_r, R)
     key = random.PRNGKey(33)
     r = np.linspace(0, R, N_r)
-    
-    keys = random.split(key, 3)
+
+    keys = random.split(key, 4)
     mask = -np.array([(-1)**i for i in range(p_ord1-1)] + [1,]).reshape(1, -1)
     phi1 = np.array(random.uniform(keys[0], (N_samples, p_ord1)) * apmlitude1).astype(np.float64)*mask
     phi2 = np.array(random.uniform(keys[1], (N_samples, p_ord2)) * amplitude2).astype(np.float64)
     phi2[:, -1] = 1 + np.abs(phi2[:, -1])
     r_e = np.array(random.uniform(keys[2], (N_samples,)) * (r_e_max - r_e_min) + r_e_min).astype(np.float64)
     D = np.array(random.uniform(keys[3], (N_samples,)) * (D_max - D_min) + D_min).astype(np.float64)
-    
+
     potentials = []
     for i in range(N_samples):
         V12 = compute_mixed_EMO(r, r_e[i], D[i], phi1[i], phi2[i])
