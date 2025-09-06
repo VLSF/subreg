@@ -58,16 +58,15 @@ class FFNO_normalised(eqx.Module):
             u += jnp.fft.irfft(u_, axis=i+1, n=N[i+1])
         return u
 
-
 def stochastic_normal2_loss(model, input, target, x, eps=1e-4):
     target = target.reshape(-1,)
     basis = model(input, x)
     basis = basis.reshape(basis.shape[0], -1)
     
-    G = basis.T @ basis
+    G = basis @ basis.T
     G = G + jnp.eye(G.shape[0])*eps
     P = jnp.linalg.cholesky(G, upper=True)
-    basis = basis @ jnp.linalg.inv(P)
+    basis = jnp.linalg.inv(P.T) @ basis
     
     b = basis @ target
     A = basis @ basis.T
