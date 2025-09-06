@@ -39,7 +39,6 @@ if __name__ == "__main__":
     keys = random.split(random.PRNGKey(33), A_data.shape[0])
     w, k = get_weights(N, h, decay, power)
     
-    solutions, rhs = [], []
     data = {
         "solutions": [],
         "rhs": []
@@ -48,7 +47,8 @@ if __name__ == "__main__":
         s, r = get_sample(a_data, A_indices, key, N, decay, power, w, k)
         data['solutions'].append(s)
         data['rhs'].append(r)
+        
     for key in data.keys():
-        data[key] = np.array(key)
+        data[key] = np.array(data[key])
 
     np.savez(dataset_name + "_standard_regression.npz", **data)
