@@ -311,7 +311,8 @@ if __name__ == "__main__":
         make_step_scan_ = lambda a, b: subspace_make_step_scan(a, b, optim)
     elif args["experiment_type"] == "stochastic_normal2":
         make_step_scan_ = lambda a, b: stochastic_normal2_make_step_scan(a, b, optim)
-        
+
+    compute_metrics_ = lambda a, b: compute_metrics(a, b, features, eigenvectors, coordinates)
     training_time = 0
     val_indices = args["N_train"] + jnp.arange(args["N_val"])
     models = []
@@ -328,7 +329,7 @@ if __name__ == "__main__":
         opt_state = carry[-1]
         models.append(model)
         opt_states.append(opt_state)
-        rel_errors = compute_eigenvec_error(model, val_indices, features, eigenvectors, coordinates, A_data, A_indices)
+        _, (cosines, rel_errors) = scan(compute_metrics_, model, val_indices)
         val_rel_errors.append(jnp.mean(rel_errors))
         training_times.append(training_time)
         histories.append(history)
@@ -344,16 +345,19 @@ if __name__ == "__main__":
     eqx.tree_serialise_leaves(f'{args["results_path"]}/opt_state_{exp_hash}.eqx', opt_states[best_n])
 
     # compute metrics
-    compute_metrics_ = lambda a, b: compute_metrics(a, b, features, eigenvectors, coordinates)
     _, (train_cosines, train_errors) = scan(compute_metrics_, model, jnp.arange(args["N_train"]))
-    train_cosines = jnp.concatenate(train_cosines, axis=0)
-    train_errors = jnp.concatenate(train_errors, axis=0)
     ind_ = jnp.arange(args["N_samples"])
-    train_eigvecs_errors = compute_eigenvec_error(model, ind_, features, eigenvectors, coordinates, A_data, A_indices)
+    if jnp.isnan(jnp.mean(train_errors)).item():
+        train_eigvecs_errors = jnp.array([jnp.nan,])
+    else:
+        train_eigvecs_errors = compute_eigenvec_error(model, ind_, features, eigenvectors, coordinates, A_data, A_indices)
 
     indices_test = jnp.arange(args["N_train"] + args["N_val"], features.shape[0])
     _, (test_cosines, test_errors) = scan(compute_metrics_, model, indices_test)
-    test_eigvecs_errors = compute_eigenvec_error(model, indices_test, features, eigenvectors, coordinates, A_data, A_indices)
+    if jnp.isnan(jnp.mean(test_errors)).item():
+        test_eigvecs_errors = jnp.array([jnp.nan,])
+    else:
+        test_eigvecs_errors = compute_eigenvec_error(model, indices_test, features, eigenvectors, coordinates, A_data, A_indices)
     
     data = "\n" + ",".join([str(args[key]) for key in args.keys()])
     data += f",{exp_hash},{history[-1]},{model_size},{training_time},{jnp.mean(train_cosines)},{jnp.mean(test_cosines)},{jnp.mean(train_errors)},{jnp.mean(test_errors)},{jnp.mean(train_eigvecs_errors)},{jnp.mean(test_eigvecs_errors)},{best_n}"
