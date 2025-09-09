@@ -182,7 +182,7 @@ if __name__ == "__main__":
     
     args_ = Args[Args["dataset_name"] == dataset_name.split("_")[-1]]
 
-    header = "dataset_name,model_hash,N_basis,train_error,validation_error,test_error"
+    header = "dataset_name,model_hash,N_basis,N_truncate,train_error,validation_error,test_error"
     if not os.path.isfile(f'FFNO_POD/results.csv'):
         with open(f'FFNO_POD/results.csv', "w") as f:
             f.write(header)
@@ -195,18 +195,18 @@ if __name__ == "__main__":
         model = FFNO(args["N_layers"], N_features, args["N_modes"], D, random.PRNGKey(33))
         model = eqx.tree_deserialise_leaves(f"{NN_path}/model_{args['hash']}.eqx", model)
         predictions_hidden = scan(make_prediction_hidden_scan, [model, features, coordinates], jnp.arange(features.shape[0]))[1]
-        _, Q = scan(lambda a, b: (a, (jnp.linalg.svd(b.reshape(-1, b.shape[-1]), full_matrices=False)[2])), None, predictions_hidden)
-        N_basis = jnp.linspace(10, Q.shape[-1], 10, dtype=jnp.int32)
-
-        for n in N_basis:
-            rel_errors = compute_metrics(Q, n, u0, forcing, Targets, c, a_extended)
-            Data[f"{args['hash']}, {n}"] = rel_errors
-            rel_errors = rel_errors[rel_errors < cut_off]
-            train_rel_errors = jnp.mean(rel_errors[:args["N_train"]])
-            val_rel_errors = jnp.mean(rel_errors[args["N_train"]:(args["N_train"]+args["N_val"])])
-            test_rel_errors = jnp.mean(rel_errors[(args["N_train"]+args["N_val"]):])
-            write_data = f"\n{dataset_name},{args['hash']},{n},{jnp.mean(train_rel_errors)},{jnp.mean(val_rel_errors)},{jnp.mean(test_rel_errors)}"
-            with open('FFNO_POD/results.csv', "a") as f:
-                f.write(write_data)
-        
+        for N_truncate in [20, 50, 80, 110]:
+            truncate = lambda x: jnp.fft.irfft(jnp.fft.rfft(x, axis=1)[:, :N_truncate], axis=1, n=x.shape[1])
+            _, Q = scan(lambda a, b: (a, (jnp.linalg.svd(truncate(b.reshape(-1, b.shape[-1])), full_matrices=False)[2])), None, predictions_hidden)
+            N_basis = jnp.linspace(10, Q.shape[-1], 10, dtype=jnp.int32)
+            for n in N_basis:
+                rel_errors = compute_metrics(Q, n, u0, forcing, Targets, c, a_extended)
+                Data[f"{args['hash']}, {n},{N_truncate}"] = rel_errors
+                rel_errors = rel_errors[rel_errors < cut_off]
+                train_rel_errors = jnp.mean(rel_errors[:args["N_train"]])
+                val_rel_errors = jnp.mean(rel_errors[args["N_train"]:(args["N_train"]+args["N_val"])])
+                test_rel_errors = jnp.mean(rel_errors[(args["N_train"]+args["N_val"]):])
+                write_data = f"\n{dataset_name},{args['hash']},{n},{N_truncate},{jnp.mean(train_rel_errors)},{jnp.mean(val_rel_errors)},{jnp.mean(test_rel_errors)}"
+                with open('FFNO_POD/results.csv', "a") as f:
+                    f.write(write_data)
     jnp.savez("FFNO_POD/metrics.npz", **Data)
