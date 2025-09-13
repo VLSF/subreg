@@ -10,7 +10,7 @@ def get_weights(N, n, alpha):
     return w
 
 def get_random_function(w, N, key):
-    c = random.normal(key, w.shape[0], dtype=jnp.complex64) * w
+    c = random.normal(key, (w.shape[0],), dtype=jnp.complex64) * w
     f = jnp.fft.irfft(c, n=N)
     return f
 
@@ -210,7 +210,7 @@ if __name__ == '__main__':
     keys = random.split(key, N_samples)
     dataset_name = f"heat_control_{control_rank}_{observations_rank}"
     stack_keys = ["W", "diffusion", "b", "psi", "phi", "solution", "alpha_optimal", "beta_optimal", "solution_controlled", "basis", "singular_values"]
-    data = get_sample(keys[1], control_rank, observations_rank)
+    data = get_sample(keys[0], control_rank, observations_rank)
     N_truncates = [5, 10, 15, 20, 25, 30]
     solution_errors = []
     observation_errors = []
