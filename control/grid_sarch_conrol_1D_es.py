@@ -62,12 +62,12 @@ def stochastic_normal2_loss(model, input, target, x, eps=1e-4):
     target = target.reshape(-1,)
     basis = model(input, x)
     basis = basis.reshape(basis.shape[0], -1)
-    
+
     G = basis @ basis.T
     G = G + jnp.eye(G.shape[0])*eps
     P = jnp.linalg.cholesky(G, upper=True)
     basis = jnp.linalg.inv(P.T) @ basis
-    
+
     b = basis @ target
     A = basis @ basis.T
     sol = jnp.linalg.solve(A, b) @ basis
@@ -221,7 +221,7 @@ def compute_metrics(model, features, coordinates, basis, diffusion, W, psi, b, p
     Q = scan(make_prediction_scan, [model, features, coordinates], jnp.arange(features.shape[0]))[1]
     M = dot_general(Q, basis, (((2,), (2,)), ((0,), (0,))))
     cosines = vmap(jnp.linalg.svdvals)(M)
-    
+
     sol = jnp.moveaxis(dot_general(Q, M, (((1,), (1,)), ((0,), (0,)))), 1, 2)
     Errors = jnp.linalg.norm(sol - basis, axis=2)
 
@@ -230,7 +230,7 @@ def compute_metrics(model, features, coordinates, basis, diffusion, W, psi, b, p
     rel_error = jnp.linalg.norm(delta, axis=1) / jnp.linalg.norm(phi_opt, axis=1)
     rel_error_projected = jnp.linalg.norm(vmap(lambda x, y: x.T @ y, in_axes=(0, 0))(psi, delta), axis=1) / jnp.linalg.norm(vmap(lambda x, y: x.T @ y, in_axes=(0, 0))(psi, phi_opt), axis=1)
     return cosines, Errors, rel_error, rel_error_projected
-    
+
 def get_argparser():
     parser = argparse.ArgumentParser()
     args = {
@@ -239,13 +239,13 @@ def get_argparser():
         },
        "-results_path": {
             "help": "absolute path to folder where results are stored"
-        },  
+        },
         "-experiment_type": {
             "default": "subspace",
             "type": str,
             "choices": ["l2", "stochastic_normal", "subspace", "stochastic_normal2"],
             "help": "experiment type: defines loss, architecture and how subspace is predicted"
-        },       
+        },
         "-learning_rate": {
             "default": 1e-3,
             "type": float,
@@ -335,26 +335,6 @@ if __name__ == "__main__":
             f.write(header)
 
     data = jnp.load(args['dataset_path'])
-
-    '''
-    shapes are
-    coords (128,)
-    coords_extended (257,)
-    t (128,)
-    W (1200, 128, 5)
-    diffusion (1200, 257)
-    b (1200, 128)
-    psi (1200, 128, 5)
-    phi (1200, 128)
-    solution (1200, 127, 128)
-    alpha_optimal (1200, 128, 5, 128)
-    beta_optimal (1200, 128, 5)
-    solution_controlled (1200, 127, 128)
-    basis (1200, 128, 128)
-    singular_values (1200, 128)
-
-    solution and controlled solution are saved without initial value which is stored in phi
-    '''
     basis = jnp.array(data["basis"])[:, :, :args["N_basis"]]
     basis = vmap(lambda x: jnp.linalg.qr(x)[0].T)(basis)
     coordinates = jnp.expand_dims(jnp.array(data["coords"]), axis=0)
@@ -383,33 +363,33 @@ if __name__ == "__main__":
                     args["learning_rate"] = learning_rate_
                     exp_hash = "".join([str(args[a]) for a in sorted(args)])
                     exp_hash = hashlib.sha256(str.encode(exp_hash)).hexdigest()
-                
+
                     D = features.ndim - 2
                     N_run = args["N_epoch"] * args["N_train"] // args["N_batch"]
                     N_drop = args["N_drop"] * args["N_train"] // args["N_batch"]
                     N_stop = args["stop_each"] * args["N_train"] // args["N_batch"]
-                
+
                     key = random.PRNGKey(args["key"])
                     keys = random.split(key, 3)
-                    
+
                     if args["experiment_type"] == "l2":
                         N_features = [coordinates.shape[0] + features.shape[1], args["N_processor"], args["N_basis"]]
                         model = FFNO_normalised(args["N_layers"], N_features, args["N_modes"], D, keys[0])
                     else:
                         N_features = [coordinates.shape[0] + features.shape[1], args["N_processor"], args["N_subspace"]]
                         model = FFNO_normalised(args["N_layers"], N_features, args["N_modes"], D, keys[0])
-                        
+
                     model_size = sum(tree_map(lambda x: jnp.size(x) if x.dtype == jnp.float32 else 2*jnp.size(x), tree_flatten(model)[0], is_leaf=eqx.is_array))
                     learning_rate = optax.exponential_decay(args["learning_rate"], N_drop, args["gamma"])
                     optim = optax.lion(learning_rate=learning_rate)
                     opt_state = optim.init(eqx.filter(model, eqx.is_array))
-                    
+
                     nn = random.choice(keys[1], args["N_train"], shape = (N_run//N_stop, N_stop, args["N_batch"]))
                     if args["experiment_type"] == "stochastic_normal" or args["experiment_type"] == "stochastic_normal2":
                         carry = [model, features, basis, coordinates, keys[1], opt_state]
                     else:
                         carry = [model, features, basis, coordinates, opt_state]
-                
+
                     if args["experiment_type"] == "l2":
                         make_step_scan_ = lambda a, b: l2_make_step_scan(a, b, optim)
                     elif args["experiment_type"] == "stochastic_normal":
@@ -418,7 +398,7 @@ if __name__ == "__main__":
                         make_step_scan_ = lambda a, b: stochastic_normal2_make_step_scan(a, b, optim)
                     elif args["experiment_type"] == "subspace":
                         make_step_scan_ = lambda a, b: subspace_make_step_scan(a, b, optim)
-                        
+
                     training_time = 0
                     models = []
                     opt_states = []
@@ -447,29 +427,29 @@ if __name__ == "__main__":
                     history = jnp.concatenate(histories[:concat_n])
                     eqx.tree_serialise_leaves(f'{args["results_path"]}/model_{exp_hash}.eqx', models[best_n])
                     eqx.tree_serialise_leaves(f'{args["results_path"]}/opt_state_{exp_hash}.eqx', opt_states[best_n])
-                
+
                     cosines, errors, rel_errors, rel_errors_projected = compute_metrics(models[best_n], features, coordinates, basis, diffusion, W, psi, b, phi, t, phi_opt)
-                    
+
                     train_cosines = jnp.mean(cosines[:args["N_train"]])
                     val_cosines = jnp.mean(cosines[args["N_train"]:(args["N_train"]+args["N_val"])])
                     test_cosines = jnp.mean(cosines[(args["N_train"]+args["N_val"]):])
-                    
+
                     train_errors = jnp.mean(errors[:args["N_train"]])
                     val_errors = jnp.mean(errors[args["N_train"]:(args["N_train"]+args["N_val"])])
                     test_errors = jnp.mean(errors[(args["N_train"]+args["N_val"]):])
-                    
+
                     train_rel_errors = jnp.mean(rel_errors[:args["N_train"]])
                     val_rel_errors = jnp.mean(rel_errors[args["N_train"]:(args["N_train"]+args["N_val"])])
                     test_rel_errors = jnp.mean(rel_errors[(args["N_train"]+args["N_val"]):])
-                
+
                     train_rel_errors_projected = jnp.mean(rel_errors_projected[:args["N_train"]])
                     val_rel_errors_projected = jnp.mean(rel_errors_projected[args["N_train"]:(args["N_train"]+args["N_val"])])
                     test_rel_errors_projected = jnp.mean(rel_errors_projected[(args["N_train"]+args["N_val"]):])
-                
+
                     data = "\n" + ",".join([str(args[key]) for key in args.keys()])
                     data += f",{exp_hash},{history[-1]},{model_size},{training_time},{train_cosines},{val_cosines},{test_cosines},{train_errors},{val_errors},{test_errors},{train_rel_errors},{val_rel_errors},{test_rel_errors},{train_rel_errors_projected},{val_rel_errors_projected},{test_rel_errors_projected},{best_n}"
-                
+
                     with open(f'{args["results_path"]}/results.csv', "a") as f:
                         f.write(data)
-                    
+
                     jnp.savez(f'{args["results_path"]}/metrics_{exp_hash}.npz', errors=rel_errors, history=history)
