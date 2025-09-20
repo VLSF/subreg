@@ -98,7 +98,7 @@ def get_argparser():
             "help": "number of samples in the validation set"
         },
         "-N_epoch": {
-            "default": 1000,
+            "default": 3000,
             "type": int,
             "help": "number of updates of the model weights = N_epoch * N_train // N_batch"
         },
@@ -173,79 +173,81 @@ if __name__ == "__main__":
             targets_ = targets @ phi_t
             for N_layers_ in [3, 4, 5, 6]:
                 for N_processor_ in [100, 200, 300, 400, 500]:
-                    args["N_basis_f"] = N_basis_f_
-                    args["N_basis_t"] = N_basis_t_
-                    args["N_layers"] = N_layers_
-                    args["N_processor"] = N_processor_
-
-                    exp_hash = "".join([str(args[a]) for a in sorted(args)])
-                    exp_hash = hashlib.sha256(str.encode(exp_hash)).hexdigest()
-                    
-                    D = features.ndim - 2
-                    N_run = args["N_epoch"] * args["N_train"] // args["N_batch"]
-                    N_drop = args["N_drop"] * args["N_train"] // args["N_batch"]
-                    N_stop = args["stop_each"] * args["N_train"] // args["N_batch"]
-                    
-                    key = random.PRNGKey(args["key"])
-                    keys = random.split(key, 3)
-                    
-                    N_features_MLP = [features_.shape[1], args["N_processor"], targets_.shape[1]]
-                    model = MLP(N_features_MLP, args["N_layers"], keys[0])
-                    
-                    model_size = sum(tree_map(lambda x: jnp.size(x) if not (x is None) else 0, tree_flatten(model)[0], is_leaf=eqx.is_array))
-                    learning_rate = optax.exponential_decay(args["learning_rate"], N_drop, args["gamma"])
-                    optim = optax.lion(learning_rate=learning_rate)
-                    opt_state = optim.init(eqx.filter(model, eqx.is_array))
-                    
-                    nn = random.choice(keys[1], args["N_train"], shape = (N_run//N_stop, N_stop, args["N_batch"]))
-                    carry = [model, features_, targets_, opt_state]
-                    make_step_scan_ = lambda a, b: l2_make_step_scan(a, b, optim)
-                    
-                    training_time = 0
-                    models = []
-                    opt_states = []
-                    val_rel_errors = []
-                    training_times = []
-                    histories = []
-                    for nn_ in nn:
-                        start = time.time()
-                        carry, history = scan(make_step_scan_, carry, nn_)
-                        stop = time.time()
-                        training_time = training_time + stop - start
-                        model = carry[0]
-                        opt_state = carry[-1]
-                        models.append(model)
-                        opt_states.append(opt_state)
-                        _, predictions = scan(make_prediction_scan, [model, features_[args["N_train"]:(args["N_train"]+args["N_val"])]], jnp.arange(features_[args["N_train"]:(args["N_train"]+args["N_val"])].shape[0]))
-                        predictions = predictions @ phi_t.T
-                        rel_errors = jnp.linalg.norm(predictions - targets[args["N_train"]:(args["N_train"]+args["N_val"])].reshape(targets[args["N_train"]:(args["N_train"]+args["N_val"])].shape[0], -1), axis=1) / jnp.linalg.norm(targets[args["N_train"]:(args["N_train"]+args["N_val"])].reshape(targets[args["N_train"]:(args["N_train"]+args["N_val"])].shape[0], -1), axis=1)
-                        val_rel_errors.append(jnp.mean(rel_errors))
-                        training_times.append(training_time)
-                        histories.append(history)
-                        if jnp.isnan(val_rel_errors[-1]).item():
-                            break
+                    for learning_rate_ in [1e-3, 1e-4]:
+                        args["learning_rate"] = learning_rate_
+                        args["N_basis_f"] = N_basis_f_
+                        args["N_basis_t"] = N_basis_t_
+                        args["N_layers"] = N_layers_
+                        args["N_processor"] = N_processor_
+    
+                        exp_hash = "".join([str(args[a]) for a in sorted(args)])
+                        exp_hash = hashlib.sha256(str.encode(exp_hash)).hexdigest()
                         
-                    val_rel_errors = jnp.array(val_rel_errors)
-                    val_rel_errors = jnp.nan_to_num(val_rel_errors, nan=jnp.inf)
-                    best_n = jnp.argmin(val_rel_errors)
-                    concat_n = min(best_n + 1, len(histories))
-                    history = jnp.concatenate(histories[:concat_n])
-                    
-                    eqx.tree_serialise_leaves(f'{args["results_path"]}/model_{exp_hash}.eqx', models[best_n])
-                    eqx.tree_serialise_leaves(f'{args["results_path"]}/opt_state_{exp_hash}.eqx', opt_states[best_n])
-                    
-                    _, predictions = scan(make_prediction_scan, [models[best_n], features_], jnp.arange(features_.shape[0]))
-                    predictions = predictions @ phi_t.T
-                    rel_errors = jnp.linalg.norm(predictions - targets, axis=1) / jnp.linalg.norm(targets, axis=1)
-                    
-                    train_rel_errors = jnp.mean(rel_errors[:args["N_train"]])
-                    val_rel_errors = jnp.mean(rel_errors[args["N_train"]:(args["N_train"]+args["N_val"])])
-                    test_rel_errors = jnp.mean(rel_errors[(args["N_train"]+args["N_val"]):])
-                    
-                    data = "\n" + ",".join([str(args[key]) for key in args.keys()])
-                    data += f",{exp_hash},{history[-1]},{model_size},{training_times[best_n]},{train_rel_errors},{test_rel_errors},{val_rel_errors},{best_n}"
-                    
-                    with open(f'{args["results_path"]}/results.csv', "a") as f:
-                        f.write(data)
-                    
-                    jnp.savez(f'{args["results_path"]}/metrics_{exp_hash}.npz', rel_errors=rel_errors, history=history)
+                        D = features.ndim - 2
+                        N_run = args["N_epoch"] * args["N_train"] // args["N_batch"]
+                        N_drop = args["N_drop"] * args["N_train"] // args["N_batch"]
+                        N_stop = args["stop_each"] * args["N_train"] // args["N_batch"]
+                        
+                        key = random.PRNGKey(args["key"])
+                        keys = random.split(key, 3)
+                        
+                        N_features_MLP = [features_.shape[1], args["N_processor"], targets_.shape[1]]
+                        model = MLP(N_features_MLP, args["N_layers"], keys[0])
+                        
+                        model_size = sum(tree_map(lambda x: jnp.size(x) if not (x is None) else 0, tree_flatten(model)[0], is_leaf=eqx.is_array))
+                        learning_rate = optax.exponential_decay(args["learning_rate"], N_drop, args["gamma"])
+                        optim = optax.lion(learning_rate=learning_rate)
+                        opt_state = optim.init(eqx.filter(model, eqx.is_array))
+                        
+                        nn = random.choice(keys[1], args["N_train"], shape = (N_run//N_stop, N_stop, args["N_batch"]))
+                        carry = [model, features_, targets_, opt_state]
+                        make_step_scan_ = lambda a, b: l2_make_step_scan(a, b, optim)
+                        
+                        training_time = 0
+                        models = []
+                        opt_states = []
+                        val_rel_errors = []
+                        training_times = []
+                        histories = []
+                        for nn_ in nn:
+                            start = time.time()
+                            carry, history = scan(make_step_scan_, carry, nn_)
+                            stop = time.time()
+                            training_time = training_time + stop - start
+                            model = carry[0]
+                            opt_state = carry[-1]
+                            models.append(model)
+                            opt_states.append(opt_state)
+                            _, predictions = scan(make_prediction_scan, [model, features_[args["N_train"]:(args["N_train"]+args["N_val"])]], jnp.arange(features_[args["N_train"]:(args["N_train"]+args["N_val"])].shape[0]))
+                            predictions = predictions @ phi_t.T
+                            rel_errors = jnp.linalg.norm(predictions - targets[args["N_train"]:(args["N_train"]+args["N_val"])].reshape(targets[args["N_train"]:(args["N_train"]+args["N_val"])].shape[0], -1), axis=1) / jnp.linalg.norm(targets[args["N_train"]:(args["N_train"]+args["N_val"])].reshape(targets[args["N_train"]:(args["N_train"]+args["N_val"])].shape[0], -1), axis=1)
+                            val_rel_errors.append(jnp.mean(rel_errors))
+                            training_times.append(training_time)
+                            histories.append(history)
+                            if jnp.isnan(val_rel_errors[-1]).item():
+                                break
+                            
+                        val_rel_errors = jnp.array(val_rel_errors)
+                        val_rel_errors = jnp.nan_to_num(val_rel_errors, nan=jnp.inf)
+                        best_n = jnp.argmin(val_rel_errors)
+                        concat_n = min(best_n + 1, len(histories))
+                        history = jnp.concatenate(histories[:concat_n])
+                        
+                        eqx.tree_serialise_leaves(f'{args["results_path"]}/model_{exp_hash}.eqx', models[best_n])
+                        eqx.tree_serialise_leaves(f'{args["results_path"]}/opt_state_{exp_hash}.eqx', opt_states[best_n])
+                        
+                        _, predictions = scan(make_prediction_scan, [models[best_n], features_], jnp.arange(features_.shape[0]))
+                        predictions = predictions @ phi_t.T
+                        rel_errors = jnp.linalg.norm(predictions - targets, axis=1) / jnp.linalg.norm(targets, axis=1)
+                        
+                        train_rel_errors = jnp.mean(rel_errors[:args["N_train"]])
+                        val_rel_errors = jnp.mean(rel_errors[args["N_train"]:(args["N_train"]+args["N_val"])])
+                        test_rel_errors = jnp.mean(rel_errors[(args["N_train"]+args["N_val"]):])
+                        
+                        data = "\n" + ",".join([str(args[key]) for key in args.keys()])
+                        data += f",{exp_hash},{history[-1]},{model_size},{training_times[best_n]},{train_rel_errors},{test_rel_errors},{val_rel_errors},{best_n}"
+                        
+                        with open(f'{args["results_path"]}/results.csv', "a") as f:
+                            f.write(data)
+                        
+                        jnp.savez(f'{args["results_path"]}/metrics_{exp_hash}.npz', rel_errors=rel_errors, history=history)
